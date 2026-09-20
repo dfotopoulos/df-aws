@@ -116,10 +116,22 @@ If the key was lost or launched without a key pair:
 
 ---
 
-## Issue 6: Network ACL (NACL) Blocking Traffic
+---
 
-Unlike Security Groups (which are stateful), Network Access Control Lists (NACLs) are stateless.
-1. In VPC Console -> **Network ACLs**.
-2. Verify:
-   - **Inbound Rules**: Allows TCP port 3389 (or All Traffic for rule 100 in default NACLs).
-   - **Outbound Rules**: Allows Ephemeral ports (TCP `1024-65535` or All Traffic) to return responses to client.
+## Issue 7: Remote Desktop Error 0x1808 ("When using a web account to sign in...")
+
+On Windows 11, if you sign in to your local PC using a Microsoft account (or Entra ID / work account) and try connecting to an EC2 instance by raw IP (`mstsc /v:<IP>`), Windows throws:
+> **Error code: 0x1808**
+> "When using a web account to sign in to the remote computer, you must provide a NetBIOS domain name or fully qualified domain name (FQDN) for the computer name. Using an IP address is not supported."
+
+### Resolution:
+1. **Connect using the AWS Public IPv4 DNS (FQDN)** instead of the raw IP:
+   ```cmd
+   mstsc /v:ec2-XX-XX-XX-XX.<region>.compute.amazonaws.com
+   ```
+2. **Or use the pre-configured `.rdp` file**:
+   - In AWS Console under **Connect** -> **RDP client**, click **Download remote desktop file**.
+   - Or open the generated [windows-dev-test-pc.rdp](../windows-dev-test-pc.rdp) file.
+3. When prompted for credentials, ensure you use:
+   - **User name**: `.\Administrator` (the `.\` tells Windows to use the remote local account rather than your local Microsoft account).
+   - **Password**: *(your decrypted password)*.
