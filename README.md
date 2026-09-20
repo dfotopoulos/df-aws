@@ -6,6 +6,7 @@ This repository contains step-by-step documentation, architectural explanations,
 
 ## Quick Navigation
 
+- [AWS Console Quickstart (Console Only)](docs/console-quickstart.md): Step-by-step console guide for instances launched via root user.
 - [AWS CLI Configuration Guide](docs/aws-cli-setup.md): How to create IAM credentials and configure your local AWS CLI.
 - [Windows RDP Connection Guide](docs/windows-rdp-connection-guide.md): Step-by-step instructions to connect via Remote Desktop (`mstsc`) and AWS Systems Manager.
 - [Troubleshooting & Diagnostics](docs/troubleshooting-checklist.md): Comprehensive checklist covering VPC routes, Internet Gateways, Security Groups, Public IPs, and Windows password retrieval.
