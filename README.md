@@ -6,6 +6,7 @@ This repository contains step-by-step documentation, architectural explanations,
 
 ## Quick Navigation
 
+- [VM Lifecycle & CLI Management Guide](docs/vm-lifecycle-management.md): Step-by-step commands to start, stop, RDP, and query all VM details.
 - [Root User vs. IAM User Guide](docs/aws-root-vs-iam.md): Explains the differences between your Root account and IAM user `df`, least-privilege concepts, and inspection commands.
 - [Executed Commands & Action Log](docs/executed-commands-log.md): Complete chronological record of every command executed and its technical purpose.
 - [AWS Console Quickstart (Console Only)](docs/console-quickstart.md): Step-by-step console guide for instances launched via root user.
