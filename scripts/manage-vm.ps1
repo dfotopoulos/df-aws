@@ -20,7 +20,7 @@
 [CmdletBinding()]
 param (
     [Parameter(Position = 0, Mandatory = $false)]
-    [ValidateSet("status", "start", "stop", "details", "connect", "list", "reset")]
+    [ValidateSet("status", "start", "stop", "details", "connect", "list", "reset", "screenshot")]
     [string]$Action = "status",
 
     [Parameter(Mandatory = $false)]
@@ -43,6 +43,18 @@ function Get-VMData {
 }
 
 switch ($Action) {
+    "screenshot" {
+        Write-Host "Capturing Windows console screenshot for $InstanceId..." -ForegroundColor Cyan
+        $screen = aws ec2 get-console-screenshot --instance-id $InstanceId --output json | ConvertFrom-Json
+        if ($screen.ImageData) {
+            $outPath = Join-Path $PSScriptRoot "screenshot.jpg"
+            [System.IO.File]::WriteAllBytes($outPath, [System.Convert]::FromBase64String($screen.ImageData))
+            Write-Host "[+] Screenshot saved to $outPath" -ForegroundColor Green
+            Start-Process $outPath
+        } else {
+            Write-Host "[-] Screenshot not available yet (instance may be off or early booting)." -ForegroundColor Yellow
+        }
+    }
     "reset" {
         Write-Host "==========================================================" -ForegroundColor Red
         Write-Host " WARNING: CLOUD FACTORY RESET (REPLACE ROOT VOLUME)" -ForegroundColor Red

@@ -39,6 +39,33 @@ aws ec2 wait instance-running --instance-ids i-0c69f686dce985f3f
 > - The Windows Administrator password **does not change**.
 > - The [`.\scripts\manage-vm.ps1 connect`](../scripts/manage-vm.ps1) script automatically detects the new IP/DNS on each start.
 
+### Monitoring Boot Status & Health:
+
+1. **Watch System & OS Status Checks (2/2 Passed):**
+   ```powershell
+   aws ec2 describe-instance-status --instance-ids i-0c69f686dce985f3f --output table
+   ```
+   - `InstanceStatus: initializing`: Windows is booting up, loading drivers, and running `EC2Launch`.
+   - `InstanceStatus: ok`: Windows operating system has booted and passed reachability checks.
+
+2. **Wait automatically until boot is fully complete:**
+   ```powershell
+   aws ec2 wait instance-status-ok --instance-ids i-0c69f686dce985f3f
+   ```
+
+3. **Take a Live Screenshot of the Windows Screen:**
+   ```powershell
+   # Automated via management script:
+   .\scripts\manage-vm.ps1 screenshot
+   ```
+   *(This downloads and displays a real-time capture of the Windows console monitor, letting you see the lock screen or boot progress).*
+
+4. **Verify Port 3389 (RDP) Reachability:**
+   ```powershell
+   Test-NetConnection -ComputerName 3.79.101.95 -Port 3389
+   ```
+   When `TcpTestSucceeded : True`, the Windows Remote Desktop Service is ready for connections.
+
 ---
 
 ## 2. Stopping the VM
