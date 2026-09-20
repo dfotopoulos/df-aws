@@ -20,7 +20,7 @@
 [CmdletBinding()]
 param (
     [Parameter(Position = 0, Mandatory = $false)]
-    [ValidateSet("status", "start", "stop", "details", "connect")]
+    [ValidateSet("status", "start", "stop", "details", "connect", "list")]
     [string]$Action = "status",
 
     [Parameter(Mandatory = $false)]
@@ -37,6 +37,11 @@ function Get-VMData {
 }
 
 switch ($Action) {
+    "list" {
+        Write-Host "Listing all EC2 instances..." -ForegroundColor Cyan
+        aws ec2 describe-instances --query "Reservations[*].Instances[*].[InstanceId,Tags[?Key=='Name'].Value|[0],State.Name,InstanceType,PublicIpAddress,PrivateIpAddress]" --output table
+    }
+
     "status" {
         Write-Host "Fetching status for $InstanceId..." -ForegroundColor Cyan
         $vm = Get-VMData -Id $InstanceId

@@ -121,3 +121,89 @@ aws ec2 describe-instances --instance-ids i-0c69f686dce985f3f --query "Reservati
 ```powershell
 aws ec2 describe-instances --instance-ids i-0c69f686dce985f3f --output json
 ```
+
+---
+
+## 5. Listing All VMs in Your Account
+
+To view all virtual machines across your AWS region, use `aws ec2 describe-instances` formatted as a readable summary table:
+
+```powershell
+aws ec2 describe-instances --query "Reservations[*].Instances[*].[InstanceId,Tags[?Key=='Name'].Value|[0],State.Name,InstanceType,PublicIpAddress,PrivateIpAddress,LaunchTime]" --output table
+```
+
+### Useful Filtering Variations:
+- **List only currently running VMs:**
+  ```powershell
+  aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].[InstanceId,Tags[?Key=='Name'].Value|[0],State.Name,PublicIpAddress]" --output table
+  ```
+- **List only Windows VMs:**
+  ```powershell
+  aws ec2 describe-instances --filters "Name=platform,Values=windows" --query "Reservations[*].Instances[*].[InstanceId,Tags[?Key=='Name'].Value|[0],State.Name,PublicIpAddress]" --output table
+  ```
+
+---
+
+## 6. Deleting (Terminating) a VM & Understanding Pricing
+
+In AWS, deleting a virtual machine is called **Terminating** the instance.
+
+### The Crucial Difference: Stopping vs. Terminating
+
+| Action | What Happens to VM? | Root EBS Disk Data | Compute Billing ($/hr) | Disk Billing ($/month) | Can It Be Restarted? |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Stop** (`stop-instances`) | Powers down like a physical PC | **Preserved intact** | **STOPS** ($0.00) | **Continues** (~$0.10/GB/mo) | **Yes** (anytime) |
+| **Terminate** (`terminate-instances`) | **Permanently deleted and discarded** | **Destroyed** (`DeleteOnTermination`) | **STOPS** ($0.00) | **STOPS** ($0.00) | **No** (irreversible) |
+
+> [!CAUTION]
+> **Termination is irreversible!** Once you terminate an instance, the virtual machine is discarded and its root disk volume is permanently wiped. All ongoing charges for both compute and disk storage stop completely.
+
+### Direct AWS CLI Command to Terminate:
+```powershell
+aws ec2 terminate-instances --instance-ids <INSTANCE_ID>
+```
+
+### Wait for termination to complete:
+```powershell
+aws ec2 wait instance-terminated --instance-ids <INSTANCE_ID>
+```
+
+---
+
+## 7. Creating an Identical VM from Scratch
+
+To launch a new Windows Server 2025 instance with the exact same architecture, network configuration, security group, and key pair as your current machine, use the `aws ec2 run-instances` command.
+
+### Exact AWS CLI Command:
+```powershell
+aws ec2 run-instances `
+    --image-id ami-00c776e9c84f3cb49 `
+    --instance-type t3.large `
+    --key-name rsa-sweden-aws `
+    --security-group-ids sg-043f8722ce2abe795 `
+    --subnet-id subnet-056112256a984f0ab `
+    --associate-public-ip-address `
+    --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":30,"VolumeType":"gp3","DeleteOnTermination":true}}]' `
+    --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=windows-dev-test-pc-clone}]'
+```
+
+### Breakdown of Required Parameters:
+- `--image-id ami-00c776e9c84f3cb49`: The official AWS AMI for Microsoft Windows Server 2025 English Full Base in `eu-central-1`.
+- `--instance-type t3.large`: 2 vCPUs, 8 GiB RAM (matching your existing instance).
+- `--key-name rsa-sweden-aws`: The key pair used to encrypt the Administrator password (decrypted locally using `rsa-sweden-aws.pem`).
+- `--security-group-ids sg-043f8722ce2abe795`: The existing security group permitting inbound TCP 3389 (RDP).
+- `--subnet-id subnet-056112256a984f0ab`: The public subnet with the default route to your VPC Internet Gateway.
+- `--associate-public-ip-address`: Automatically allocates a public IPv4 address upon boot.
+- `--block-device-mappings`: Attaches a 30 GB gp3 SSD root volume with `DeleteOnTermination: true` (disks are automatically cleaned up when terminated).
+- `--tag-specifications`: Assigns the human-readable `Name` tag to the instance.
+
+### Connecting to the Newly Created VM:
+1. Wait 5-8 minutes after running `run-instances` for Windows Server 2025 to complete its first boot and initialize `EC2Launch`.
+2. Decrypt the Administrator password for the new instance ID:
+   ```powershell
+   aws ec2 get-password-data --instance-id <NEW_INSTANCE_ID> --priv-launch-key "C:\opt\msys\home\df\.ssh\rsa-sweden-aws.pem"
+   ```
+3. Connect with `mstsc`:
+   ```powershell
+   mstsc /v:<NEW_PUBLIC_DNS>
+   ```
