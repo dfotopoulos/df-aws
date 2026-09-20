@@ -96,13 +96,23 @@ aws ec2 describe-instance-status --instance-id <YOUR_INSTANCE_ID>
 
 ---
 
-## Issue 5: Lost Key Pair / Cannot Decrypt Password
+## Issue 5: Key Pair Format Mismatch (.ppk vs .pem) / Cannot Decrypt Password
 
-If you launched without a key pair or lost your `.pem` private key file:
-1. You cannot retrieve the default Administrator password via the standard console decryption.
-2. **Resolution Options**:
-   - **If AWS SSM Agent is working**: Use **AWS Systems Manager Fleet Manager** to reset the Windows Administrator password without a key pair.
-   - **Alternative**: Relaunch the instance with a new key pair that you download and save locally.
+When creating a key pair in AWS, users often select **.ppk** (for PuTTY). However, the **AWS EC2 Windows "Get password" feature strictly requires a PEM-formatted private key (`.pem`)** with the header `-----BEGIN RSA PRIVATE KEY-----`.
+
+### Symptom:
+- The AWS Console throws an error when selecting your `.ppk` key file, or the password decryption fails.
+
+### Resolution:
+Convert the `.ppk` file to `.pem` using the repository utility:
+```powershell
+python .\scripts\convert-ppk-to-pem.py "C:\path\to\your-key.ppk"
+```
+This generates a corresponding `.pem` file with valid RSA PKCS#1 formatting that AWS Console and CLI accept.
+
+If the key was lost or launched without a key pair:
+1. **If AWS SSM Agent is working**: Use **AWS Systems Manager Fleet Manager** to reset the Windows Administrator password without a key pair.
+2. **Alternative**: Relaunch the instance with a new key pair, selecting `.pem` format.
 
 ---
 
