@@ -20,14 +20,17 @@
 [CmdletBinding()]
 param (
     [Parameter(Position = 0, Mandatory = $false)]
-    [ValidateSet("status", "start", "stop", "details", "connect", "list")]
+    [ValidateSet("status", "start", "stop", "details", "connect", "list", "reset")]
     [string]$Action = "status",
 
     [Parameter(Mandatory = $false)]
     [string]$InstanceId = "i-0c69f686dce985f3f",
 
     [Parameter(Mandatory = $false)]
-    [string]$Username = "Administrator"
+    [string]$Username = "Administrator",
+
+    [Parameter(Mandatory = $false)]
+    [switch]$Force
 )
 
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
@@ -40,6 +43,44 @@ function Get-VMData {
 }
 
 switch ($Action) {
+    "reset" {
+        Write-Host "==========================================================" -ForegroundColor Red
+        Write-Host " WARNING: CLOUD FACTORY RESET (REPLACE ROOT VOLUME)" -ForegroundColor Red
+        Write-Host "==========================================================" -ForegroundColor Red
+        Write-Host "This will replace the instance disk with the original clean AMI." -ForegroundColor Yellow
+        Write-Host "ALL added applications (PowerToys, etc.), files, and custom users" -ForegroundColor Yellow
+        Write-Host "on the C: drive will be PERMANENTLY WIPED." -ForegroundColor Yellow
+        Write-Host "The Instance ID ($InstanceId) and IP address are preserved." -ForegroundColor Cyan
+
+        if (-not $Force) {
+            $confirm = Read-Host "`nType 'YES' to proceed with factory reset"
+            if ($confirm -ne "YES") {
+                Write-Host "[-] Reset aborted by user." -ForegroundColor Gray
+                return
+            }
+        }
+
+        Write-Host "`n[*] Initiating Root Volume Replacement task via AWS CLI..." -ForegroundColor Cyan
+        $task = aws ec2 create-replace-root-volume-task --instance-id $InstanceId --delete-replaced-root-volume --output json | ConvertFrom-Json
+        $taskId = $task.ReplaceRootVolumeTask.ReplaceRootVolumeTaskId
+        Write-Host "[+] Task created: $taskId" -ForegroundColor Green
+        Write-Host "Waiting for root volume replacement to complete (usually 1-2 minutes)..." -ForegroundColor Yellow
+
+        while ($true) {
+            Start-Sleep -Seconds 5
+            $statusCheck = aws ec2 describe-replace-root-volume-tasks --replace-root-volume-task-ids $taskId --output json | ConvertFrom-Json
+            $state = $statusCheck.ReplaceRootVolumeTasks[0].TaskState
+            Write-Host "    Current task state: $state" -ForegroundColor Gray
+            if ($state -eq "succeeded") {
+                Write-Host "`n[+] Factory reset SUCCEEDED! All added applications are purged." -ForegroundColor Green
+                Write-Host "    Windows Server 2025 is now rebooting in its initial pristine state." -ForegroundColor Cyan
+                break
+            } elseif ($state -in @("failed", "cancelled")) {
+                Write-Host "[-] Reset task ended with state: $state" -ForegroundColor Red
+                break
+            }
+        }
+    }
     "list" {
         Write-Host "Listing all EC2 instances..." -ForegroundColor Cyan
         aws ec2 describe-instances --query "Reservations[*].Instances[*].[InstanceId,Tags[?Key=='Name'].Value|[0],State.Name,InstanceType,PublicIpAddress,PrivateIpAddress]" --output table

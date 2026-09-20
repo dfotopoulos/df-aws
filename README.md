@@ -6,6 +6,7 @@ This repository contains step-by-step documentation, architectural explanations,
 
 ## Quick Navigation
 
+- [Resetting the VM & Purging Applications](docs/vm-reset-and-purge.md): Cloud-native root volume replacement (factory reset) vs. in-guest app purging.
 - [Windows Multi-User Application Guide](docs/windows-multi-user-apps.md): Why apps like PowerToys disappear in new user accounts (Per-User vs. Machine-Wide scopes) and how to install for all users.
 - [IAM Cloud Users vs. Windows OS Users](docs/iam-vs-os-users.md): Why RDP uses `Administrator` rather than `df`, and how to create a `df` Windows account inside the VM.
 - [VM Lifecycle & CLI Management Guide](docs/vm-lifecycle-management.md): Step-by-step commands to start, stop, RDP, and query all VM details.
