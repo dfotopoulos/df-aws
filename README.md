@@ -6,6 +6,7 @@ This repository contains step-by-step documentation, architectural explanations,
 
 ## Quick Navigation
 
+- [Executed Commands & Action Log](docs/executed-commands-log.md): Complete chronological record of every command executed and its technical purpose.
 - [AWS Console Quickstart (Console Only)](docs/console-quickstart.md): Step-by-step console guide for instances launched via root user.
 - [IAM EC2 Management Guide](docs/iam-ec2-management.md): How to grant an IAM user permissions to manage and operate EC2 instances.
 - [AWS CLI Configuration Guide](docs/aws-cli-setup.md): How to create IAM credentials and configure your local AWS CLI.
