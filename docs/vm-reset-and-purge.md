@@ -44,6 +44,13 @@ aws ec2 describe-replace-root-volume-tasks --instance-ids i-0c69f686dce985f3f --
 2. A brand-new C: drive is created from the base Windows Server 2025 AMI.
 3. All added applications, user accounts (such as `df`), and desktop files are 100% purged.
 4. The VM reboots in its original, pristine factory condition.
+5. **A brand-new Administrator password is generated** and encrypted with your key pair.
+
+### Retrieving the New Password After a Reset:
+```powershell
+aws ec2 get-password-data --instance-id i-0c69f686dce985f3f --priv-launch-key "C:\opt\msys\home\df\.ssh\rsa-sweden-aws.pem"
+```
+*(Or simply run `.\scripts\manage-vm.ps1 connect`, which always fetches the latest active password automatically).*
 
 ---
 
