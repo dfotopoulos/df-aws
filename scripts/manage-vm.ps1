@@ -24,7 +24,10 @@ param (
     [string]$Action = "status",
 
     [Parameter(Mandatory = $false)]
-    [string]$InstanceId = "i-0c69f686dce985f3f"
+    [string]$InstanceId = "i-0c69f686dce985f3f",
+
+    [Parameter(Mandatory = $false)]
+    [string]$Username = "Administrator"
 )
 
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
@@ -89,7 +92,7 @@ switch ($Action) {
     }
 
     "connect" {
-        Write-Host "Preparing RDP connection..." -ForegroundColor Cyan
+        Write-Host "Preparing RDP connection for user '$Username'..." -ForegroundColor Cyan
         $vm = Get-VMData -Id $InstanceId
         if ($vm.State.Name -ne "running") {
             Write-Host "[-] Instance is currently '$($vm.State.Name)'. Run '.\manage-vm.ps1 start' first." -ForegroundColor Red
@@ -102,20 +105,29 @@ switch ($Action) {
             return
         }
 
-        Write-Host "Retrieving Administrator password..." -ForegroundColor Cyan
-        $pwData = aws ec2 get-password-data --instance-id $InstanceId --priv-launch-key $keyPath --output json | ConvertFrom-Json
+        if ($Username -eq "Administrator") {
+            Write-Host "Retrieving Administrator password..." -ForegroundColor Cyan
+            $pwData = aws ec2 get-password-data --instance-id $InstanceId --priv-launch-key $keyPath --output json | ConvertFrom-Json
 
-        if ($pwData.PasswordData) {
-            Set-Clipboard -Value $pwData.PasswordData
-            Write-Host "[+] Password copied to clipboard!" -ForegroundColor Green
-            Write-Host "    Target Host: $dns" -ForegroundColor White
-            Write-Host "    Username   : .\Administrator" -ForegroundColor Yellow
-            Write-Host "    Password   : (In clipboard, press Ctrl+V)" -ForegroundColor Yellow
+            if ($pwData.PasswordData) {
+                Set-Clipboard -Value $pwData.PasswordData
+                Write-Host "[+] Administrator password copied to clipboard!" -ForegroundColor Green
+                Write-Host "    Target Host: $dns" -ForegroundColor White
+                Write-Host "    Username   : .\Administrator" -ForegroundColor Yellow
+                Write-Host "    Password   : (In clipboard, press Ctrl+V)" -ForegroundColor Yellow
+            } else {
+                Write-Host "[-] Could not retrieve password. Ensure instance has completed initialization." -ForegroundColor Red
+                return
+            }
+        } else {
+            Write-Host "[*] Connecting with custom local account: .\$Username" -ForegroundColor Yellow
+            Write-Host "    (Ensure user '$Username' has been created inside Windows and added to Remote Desktop Users)" -ForegroundColor Gray
+        }
 
-            # Generate dynamic RDP file for the active DNS
-            $rdpContent = @"
+        # Generate dynamic RDP file for the active DNS
+        $rdpContent = @"
 full address:s:$dns
-username:s:Administrator
+username:s:.\$Username
 prompt for credentials:i:1
 administrative session:i:1
 screen mode id:i:2
@@ -125,13 +137,10 @@ redirectclipboard:i:1
 authentication level:i:2
 enablecredsspsupport:i:1
 "@
-            $tempRdp = Join-Path $PSScriptRoot "..\windows-dev-test-pc.rdp"
-            Set-Content -Path $tempRdp -Value $rdpContent -Encoding Ascii
+        $tempRdp = Join-Path $PSScriptRoot "..\windows-dev-test-pc.rdp"
+        Set-Content -Path $tempRdp -Value $rdpContent -Encoding Ascii
 
-            Write-Host "`nLaunching Remote Desktop..." -ForegroundColor Cyan
-            Start-Process mstsc.exe -ArgumentList (Resolve-Path $tempRdp).Path
-        } else {
-            Write-Host "[-] Could not retrieve password. Ensure instance has completed initialization." -ForegroundColor Red
-        }
+        Write-Host "`nLaunching Remote Desktop..." -ForegroundColor Cyan
+        Start-Process mstsc.exe -ArgumentList (Resolve-Path $tempRdp).Path
     }
 }

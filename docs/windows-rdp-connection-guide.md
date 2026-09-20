@@ -59,6 +59,40 @@ You are now connected to your Windows EC2 desktop!
 
 ---
 
+## Connecting with a Different / Custom Windows User (e.g. `df`)
+
+By default, new AWS Windows AMIs only have the `Administrator` account. To connect as a different user like `df`:
+
+### Step 1: Create the User Inside the Windows VM
+While connected as `Administrator`, open **PowerShell as Administrator** on the Windows VM and run:
+```powershell
+# 1. Create the user with your chosen password
+net user df "YourSecurePassword123!" /add
+
+# 2. Grant Administrator rights (optional, but recommended for dev machines)
+net localgroup Administrators df /add
+
+# 3. Grant Remote Desktop permission (MANDATORY for RDP access)
+net localgroup "Remote Desktop Users" df /add
+```
+
+### Step 2: Connect via `mstsc` as `df`
+
+#### Option A: Via PowerShell Automation Script
+```powershell
+.\scripts\manage-vm.ps1 connect -Username df
+```
+This opens Remote Desktop pre-filled with `.\df`. Enter your password (`YourSecurePassword123!`) when prompted.
+
+#### Option B: Via Standard `mstsc` GUI
+1. Run `mstsc /v:ec2-3-79-101-95.eu-central-1.compute.amazonaws.com`
+2. When the Windows Security credential prompt appears:
+   - Click **More choices** &rarr; **Use a different account**.
+   - User name: `.\df` *(The `.\` prefix forces authentication against the remote VM rather than your local PC!)*
+   - Password: `YourSecurePassword123!`
+
+---
+
 ## Method 2: AWS Systems Manager Fleet Manager (No Public IP & No Port 3389 Required)
 
 If your VPC has no public IP or you do not want to open port 3389 to the internet, AWS Fleet Manager allows browser-based RDP without opening any inbound ports.
