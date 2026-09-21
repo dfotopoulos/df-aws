@@ -1,15 +1,10 @@
-# Allow README.md despite global gitignore
-!README.md
-
-# AWS & Security credentials - NEVER commit keys
-*.pem
-*.ppk
-*.key
-credentials
-.aws/
-*.csv
-
+message.txt
+*.pdf
 .idea/
 *.iml
-
 .obsidian/
+
+node_modules/
+
+prog/prog-2026-2027/
+
