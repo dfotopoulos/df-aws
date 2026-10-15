@@ -10,13 +10,17 @@ commands and the included automation scripts.
 
 You can perform all operations using the included PowerShell script:
 
-| Action            | Command                           |
-| :---------------- | :-------------------------------- |
-| **Check Status**  | `.\scripts\manage-vm.ps1 status`  |
-| **Start VM**      | `.\scripts\manage-vm.ps1 start`   |
-| **Stop VM**       | `.\scripts\manage-vm.ps1 stop`    |
-| **Connect (RDP)** | `.\scripts\manage-vm.ps1 connect` |
-| **Full Details**  | `.\scripts\manage-vm.ps1 details` |
+| Action               | Command                                     |
+| :------------------- | :------------------------------------------ |
+| **Check Status**     | `.\scripts\manage-vm.ps1 status`            |
+| **List All VMs**     | `.\scripts\manage-vm.ps1 list`              |
+| **List Running VMs** | `.\scripts\manage-vm.ps1 running`           |
+| **Start VM**         | `.\scripts\manage-vm.ps1 start`             |
+| **Stop VM**          | `.\scripts\manage-vm.ps1 stop`              |
+| **Connect (RDP)**    | `.\scripts\manage-vm.ps1 connect`           |
+| **Full Details**     | `.\scripts\manage-vm.ps1 details`           |
+| **Create VM**        | `.\scripts\manage-vm.ps1 create -Name <VM>` |
+| **Teardown VM**      | `.\scripts\manage-vm.ps1 teardown`          |
 
 ---
 
@@ -180,16 +184,32 @@ aws ec2 describe-instances --instance-ids i-0c69f686dce985f3f --output json
 
 ---
 
-## 5. Listing All VMs in Your Account
+## 5. Listing All or Running VMs in Your Account
 
-To view all virtual machines across your AWS region, use
-`aws ec2 describe-instances` formatted as a readable summary table:
+You can list all instances or filter specifically for running VMs using the
+management script or raw AWS CLI commands:
+
+### Automated Script Commands (Recommended):
+
+```powershell
+# List ALL instances (running, stopped, pending)
+.\scripts\manage-vm.ps1 list
+
+# List ONLY running instances
+.\scripts\manage-vm.ps1 running
+
+# Or using the -Running switch:
+.\scripts\manage-vm.ps1 list -Running
+```
+
+### Direct AWS CLI Commands:
+
+To view all virtual machines across your AWS region formatted as a summary
+table:
 
 ```powershell
 aws ec2 describe-instances --query "Reservations[*].Instances[*].[InstanceId,Tags[?Key=='Name'].Value|[0],State.Name,InstanceType,PublicIpAddress,PrivateIpAddress,LaunchTime]" --output table
 ```
-
-### Useful Filtering Variations:
 
 - **List only currently running VMs:**
     ```powershell
@@ -217,6 +237,19 @@ In AWS, deleting a virtual machine is called **Terminating** the instance.
 > the virtual machine is discarded and its root disk volume is permanently
 > wiped. All ongoing charges for both compute and disk storage stop completely.
 
+### Automated Teardown via Management Script:
+
+```powershell
+# Terminate and purge the default instance (prompts for confirmation)
+.\scripts\manage-vm.ps1 teardown
+
+# Or bypass confirmation prompt:
+.\scripts\manage-vm.ps1 teardown -Force
+
+# Or specify a different instance:
+.\scripts\manage-vm.ps1 teardown -InstanceId i-xxxx -Force
+```
+
 ### Direct AWS CLI Command to Terminate:
 
 ```powershell
@@ -233,11 +266,31 @@ aws ec2 wait instance-terminated --instance-ids <INSTANCE_ID>
 
 ## 7. Creating an Identical VM from Scratch
 
-To launch a new Windows Server 2025 instance with the exact same architecture,
-network configuration, security group, and key pair as your current machine, use
-the `aws ec2 run-instances` command.
+You can launch a clean Windows instance either automatically using
+`manage-vm.ps1 create` or manually with raw AWS CLI commands.
 
-### Exact AWS CLI Command:
+### Automated Creation via Management Script (Recommended):
+
+```powershell
+# Launch with mandatory VM name (Windows Server 2025 / Windows 11 Desktop, t3.large, 120GB gp3)
+.\scripts\manage-vm.ps1 create -Name windows-dev-test-pc
+
+# Or customize instance type, volume size, or pass a user-data bootstrap script:
+.\scripts\manage-vm.ps1 create -Name my-dev-vm -InstanceType t3.xlarge -VolumeSize 150 -Force
+```
+
+> [!IMPORTANT] **Mandatory VM Name & Duplicate Protection**: The `-Name`
+> parameter is mandatory. If an active VM with that name already exists, the
+> script returns smoothly with an error explaining that creation failed because
+> the VM already exists, and prints the existing VM's live status.
+
+> [!NOTE] When `manage-vm.ps1 create` runs, it automatically queries AWS SSM for
+> the latest Windows Server 2025 (Windows 11 codebase) AMI, launches the
+> instance, waits for it to reach `running` state, polls the RDP port (3389)
+> until Windows is fully booted and **available**, updates the default
+> `InstanceId` in `manage-vm.ps1`, and refreshes `windows-dev-test-pc.rdp`.
+
+### Direct AWS CLI Command:
 
 ```powershell
 aws ec2 run-instances `
@@ -247,8 +300,8 @@ aws ec2 run-instances `
     --security-group-ids sg-043f8722ce2abe795 `
     --subnet-id subnet-056112256a984f0ab `
     --associate-public-ip-address `
-    --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":30,"VolumeType":"gp3","DeleteOnTermination":true}}]' `
-    --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=windows-dev-test-pc-clone}]'
+    --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":120,"VolumeType":"gp3","DeleteOnTermination":true}}]' `
+    --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=windows-dev-test-pc}]'
 ```
 
 ### Breakdown of Required Parameters:
