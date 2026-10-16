@@ -64,11 +64,33 @@ Think of buying a laptop from a computer store:
 If you want to log in to the Windows desktop as user **`df`** instead of
 `Administrator`, you can create a local Windows user named `df` inside the VM.
 
-### Method A: Via PowerShell Inside Remote Desktop
+### Method A: Automated via `manage-vm.ps1` (Recommended)
+
+You can provision or update the local Windows user `df` (automatically added to
+`Administrators` and `Remote Desktop Users`, with the `.rdp` shortcut updated)
+either **when creating a new VM** or **live on a running VM**:
+
+```powershell
+# Option 1: On an existing running VM (uses AWS Systems Manager under the hood)
+.\scripts\manage-vm.ps1 modify -Name windows-dev-test-pc -NewUser df
+
+# Or specify the password explicitly without prompts:
+.\scripts\manage-vm.ps1 add-user -Name windows-dev-test-pc -NewUser df -Password "YourStrongPassword123!" -Force
+
+# Option 2: When launching a brand-new VM (bootstraps user via EC2 User Data)
+.\scripts\manage-vm.ps1 create -Name windows-dev-test-pc -NewUser df
+
+# Then connect directly via Remote Desktop as .\df:
+.\scripts\manage-vm.ps1 connect -Name windows-dev-test-pc -Username df
+```
+
+---
+
+### Method B: Via PowerShell Inside Remote Desktop
 
 1. Connect via RDP as `Administrator` using:
     ```powershell
-    .\scripts\manage-vm.ps1 connect
+    .\scripts\manage-vm.ps1 connect -Name windows-dev-test-pc
     ```
 2. Once on the Windows desktop, open **PowerShell as Administrator** and run:
     ```powershell
@@ -88,7 +110,7 @@ If you want to log in to the Windows desktop as user **`df`** instead of
 
 ---
 
-### Method B: Via AWS Systems Manager (Without Logging In First)
+### Method C: Via Direct AWS Systems Manager CLI (Without Logging In First)
 
 If your instance has an SSM role attached, you can send the user creation
 command directly from your local terminal through the AWS CLI:

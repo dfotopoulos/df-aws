@@ -17,7 +17,10 @@ Amazon Web Services (AWS) Virtual Private Cloud (VPC).
   `Administrator` rather than `df`, and how to create a `df` Windows account
   inside the VM.
 - [VM Lifecycle & CLI Management Guide](docs/vm-lifecycle-management.md):
-  Step-by-step commands to start, stop, RDP, and query all VM details.
+  Complete reference for [`scripts/manage-vm.ps1`](scripts/manage-vm.ps1) and
+  underlying AWS CLI commands (`help`, `status`, `list`, `running`, `start`,
+  `stop`, `connect`, `create`, `modify`, `add-user`, `reset`, `screenshot`,
+  `teardown`).
 - [AWS Mobile App Sign-In Guide](docs/aws-mobile-app-setup.md): Exact fields and
   values for logging into the AWS Console Android app.
 - [Root User vs. IAM User Guide](docs/aws-root-vs-iam.md): Explains the
@@ -39,6 +42,46 @@ Amazon Web Services (AWS) Virtual Private Cloud (VPC).
   Groups, Public IPs, and Windows password retrieval.
 - [Diagnostic Script](scripts/diagnose-ec2-windows.ps1): Automated PowerShell
   script using AWS CLI to detect why your instance is unreachable.
+
+---
+
+## All-in-One VM Management CLI ([`scripts/manage-vm.ps1`](scripts/manage-vm.ps1))
+
+Manage the entire lifecycle of your Windows EC2 instance (e.g.,
+`windows-dev-test-pc`) from PowerShell:
+
+```powershell
+# Display the rich interactive help reference (with windows-dev-test-pc & AWS CLI examples)
+.\scripts\manage-vm.ps1 help
+
+# Check VM status or list all / running instances
+.\scripts\manage-vm.ps1 status -Name windows-dev-test-pc
+.\scripts\manage-vm.ps1 list
+.\scripts\manage-vm.ps1 running
+
+# Create a new Windows Server 2025 / Win 11 VM and bootstrap local admin user 'df'
+.\scripts\manage-vm.ps1 create -Name windows-dev-test-pc -NewUser df
+
+# Start, stop (halts compute billing), or connect via Remote Desktop (mstsc.exe)
+.\scripts\manage-vm.ps1 start -Name windows-dev-test-pc
+.\scripts\manage-vm.ps1 connect -Name windows-dev-test-pc
+.\scripts\manage-vm.ps1 connect -Name windows-dev-test-pc -Username df
+.\scripts\manage-vm.ps1 stop -Name windows-dev-test-pc
+
+# Modify an existing VM in-place (add/update OS user via SSM, rename, or resize CPU/disk)
+.\scripts\manage-vm.ps1 modify -Name windows-dev-test-pc -NewUser df
+.\scripts\manage-vm.ps1 modify -Name windows-dev-test-pc -NewName windows-dev-test-pc-v2
+.\scripts\manage-vm.ps1 modify -Name windows-dev-test-pc -InstanceType t3.xlarge -VolumeSize 200
+
+# Capture a live console screenshot, factory-reset root disk, or permanently teardown
+.\scripts\manage-vm.ps1 screenshot -Name windows-dev-test-pc
+.\scripts\manage-vm.ps1 reset -Name windows-dev-test-pc
+.\scripts\manage-vm.ps1 teardown -Name windows-dev-test-pc
+```
+
+See the full
+[VM Lifecycle & CLI Management Guide](docs/vm-lifecycle-management.md) for all
+parameters and raw `aws ec2` / `aws ssm` equivalents.
 
 ---
 

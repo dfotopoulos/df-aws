@@ -1,42 +1,171 @@
 <#
 .SYNOPSIS
-    All-in-one EC2 Windows VM Management Tool for df-aws.
+    All-in-one AWS EC2 Windows VM Lifecycle & Management CLI for df-aws.
 
 .DESCRIPTION
-    Allows starting, stopping, getting details, checking status, connecting,
-    resetting, taking screenshots, creating, modifying (adding users, resizing, renaming),
-    and tearing down (purging) the Windows EC2 instance.
+    Provides complete lifecycle management for AWS EC2 Windows instances (Windows Server 2025 /
+    Windows 11 Desktop Experience) via the AWS CLI and AWS Systems Manager (SSM).
+
+    Capabilities include:
+      - Discovery & Inspection : Check status, list all or running VMs, dump full JSON metadata,
+                                 and capture live console screenshots.
+      - Power & RDP Connection : Start and stop instances (with compute-billing safeguards),
+                                 decrypt the Administrator password via PEM key to the clipboard,
+                                 dynamically generate/update the RDP file, and launch mstsc.exe.
+      - Provisioning (create)  : Launch a new Windows Server 2025 VM with duplicate-name protection,
+                                 optional custom Admin/RDP user bootstrap via EC2 User Data, automatic
+                                 port 3389 readiness polling, and auto-updating of script defaults.
+      - In-Place Modification  : Add or update local Windows OS users (Administrators + Remote Desktop
+                                 Users) live via AWS SSM without rebooting, rename the VM's Name tag,
+                                 change the EC2 InstanceType, or expand the root gp3 EBS volume.
+      - Reset & Teardown       : Perform a cloud factory reset (root volume replacement preserving
+                                 Instance ID and IP) or permanently terminate and purge the VM.
+      - Rich Built-In Help     : Run `.\scripts\manage-vm.ps1 help` (or `-Help`) to view a complete
+                                 colorized command reference with `windows-dev-test-pc` examples and
+                                 underlying `aws` CLI equivalents.
 
 .PARAMETER Action
-    One of: status, start, stop, details, connect, list, running, reset, screenshot, create, modify, add-user, teardown, purge
+    The management command to execute. Defaults to "status".
+    Allowed values:
+      - help, usage                : Display the rich command reference and examples.
+      - status                     : Show a concise health & network summary for the target VM.
+      - list                       : List all EC2 instances in the region (or only running with -Running).
+      - running                    : Shortcut to list only currently running EC2 instances.
+      - start                      : Start a stopped VM and wait until it reaches 'running' state.
+      - stop                       : Stop a running VM (requires -Name) so compute billing ceases.
+      - connect                    : Decrypt password (if Administrator), update .rdp file, and launch mstsc.exe.
+      - details                    : Output complete raw AWS EC2 describe-instances JSON metadata.
+      - screenshot                 : Capture and open a live JPG screenshot of the Windows console display.
+      - create                     : Launch a new Windows Server 2025 EC2 instance (requires -Name).
+      - modify, modify-vm, add-user: Modify an existing VM (add/update OS user via SSM, rename, resize CPU/RAM/disk).
+      - reset                      : Cloud factory reset — replace root EBS volume with clean base AMI.
+      - teardown, purge, destroy   : Permanently terminate the instance and delete its root EBS volume (requires -Name).
+
+.PARAMETER InstanceId
+    Target AWS EC2 Instance ID (e.g., "i-0135755d4c646aae6"). Automatically updated when `create` succeeds,
+    or dynamically resolved when `-Name` is specified.
+
+.PARAMETER Name
+    The human-readable EC2 `Name` tag of the VM (e.g., "windows-dev-test-pc").
+    - Mandatory for `create`, `stop`, `teardown`, `purge`, and `destroy` (prompts interactively if omitted without -Force).
+    - Optional for all other commands; when provided, resolves the active Instance ID by `tag:Name`.
+
+.PARAMETER Running
+    Switch used with the `list` action (`.\scripts\manage-vm.ps1 list -Running`) to filter only running instances.
+
+.PARAMETER InstanceType
+    EC2 compute instance type (default: "t3.large" — 2 vCPUs, 8 GiB RAM).
+    Used when launching a new VM (`create`) or resizing a stopped VM (`modify -InstanceType <type>`).
+
+.PARAMETER VolumeSize
+    Root EBS gp3 volume size in GB (default: 120).
+    Used when launching a new VM (`create`) or expanding storage on an existing VM (`modify -VolumeSize <GB>`).
+
+.PARAMETER AmiId
+    Optional Amazon Machine Image (AMI) ID for `create`. If omitted, automatically queries AWS SSM Parameter
+    Store for the latest Windows Server 2025 English Full Base AMI (`/aws/service/ami-windows-latest/Windows_Server-2025-English-Full-Base`).
+
+.PARAMETER KeyName
+    AWS EC2 Key Pair name used to encrypt the Windows Administrator password at launch (default: "rsa-sweden-aws").
+
+.PARAMETER SecurityGroupId
+    Security Group ID permitting inbound TCP port 3389 for RDP (default: "sg-043f8722ce2abe795").
+
+.PARAMETER SubnetId
+    Target VPC Public Subnet ID with Internet Gateway route (default: "subnet-056112256a984f0ab").
+
+.PARAMETER UserDataPath
+    Optional path to a custom EC2 User Data script to execute during initial instance provisioning (`create`).
+
+.PARAMETER NewUser
+    Aliases: -User, -AddUser
+    Local Windows username (e.g., "df" or "developer") to provision and add to local `Administrators` and
+    `Remote Desktop Users` groups during `create` (via EC2 User Data) or `modify` / `add-user` (via AWS SSM).
+
+.PARAMETER NewUserPassword
+    Aliases: -Password
+    Password for `-NewUser`. If omitted, prompts interactively (or auto-generates a 16-character secure
+    random password when `-Force` is specified or Enter is pressed).
+
+.PARAMETER NewName
+    Aliases: -Rename
+    New EC2 `Name` tag value when renaming an instance via `modify -Name <OldName> -NewName <NewName>`.
+
+.PARAMETER Username
+    Windows OS username to use when launching Remote Desktop with `connect` (default: "Administrator").
+    When set to "Administrator", the script decrypts the EC2 password via the PEM key and copies it to the clipboard.
+
+.PARAMETER Force
+    Bypasses interactive confirmation prompts (`YES` prompts on `create`, `reset`, `teardown`) and generates
+    random passwords automatically if `-NewUserPassword` is not supplied.
+
+.PARAMETER Help
+    Aliases: -h, -?
+    Displays the rich colorized command reference with `windows-dev-test-pc` examples and exits.
 
 .EXAMPLE
-    .\manage-vm.ps1 status
-    .\manage-vm.ps1 start
-    .\manage-vm.ps1 stop
-    .\manage-vm.ps1 details
-    .\manage-vm.ps1 connect
-    .\manage-vm.ps1 connect -Username developer
-    .\manage-vm.ps1 list
-    .\manage-vm.ps1 list -Running
-    .\manage-vm.ps1 running
-    .\manage-vm.ps1 create -Name my-vm
-    .\manage-vm.ps1 create -Name my-vm -NewUser developer
-    .\manage-vm.ps1 modify -NewUser df
-    .\manage-vm.ps1 modify -Name nanomegas-format-code -NewUser df
-    .\manage-vm.ps1 teardown
+    .\scripts\manage-vm.ps1 help
+    Displays the rich interactive help guide with all commands, parameters, and `windows-dev-test-pc` examples.
+
+.EXAMPLE
+    .\scripts\manage-vm.ps1 status -Name windows-dev-test-pc
+    Checks the current state, instance type, Public IP, and Public DNS of `windows-dev-test-pc`.
+
+.EXAMPLE
+    .\scripts\manage-vm.ps1 list
+    .\scripts\manage-vm.ps1 list -Running
+    .\scripts\manage-vm.ps1 running
+    Lists all EC2 instances in the region, or filters for currently running instances only.
+
+.EXAMPLE
+    .\scripts\manage-vm.ps1 create -Name windows-dev-test-pc
+    .\scripts\manage-vm.ps1 create -Name windows-dev-test-pc -NewUser df -InstanceType t3.xlarge -VolumeSize 150 -Force
+    Creates a new Windows Server 2025 VM named `windows-dev-test-pc`, optionally bootstrapping local admin user `df`.
+
+.EXAMPLE
+    .\scripts\manage-vm.ps1 start -Name windows-dev-test-pc
+    z.\scripts\manage-vm.ps1 stop -Name windows-dev-test-pc
+    Starts or stops the `windows-dev-test-pc` instance and waits for state transition completion.
+
+.EXAMPLE
+    .\scripts\manage-vm.ps1 connect -Name windows-dev-test-pc
+    .\scripts\manage-vm.ps1 connect -Name windows-dev-test-pc -Username df
+    Connects via Remote Desktop (`mstsc.exe`) as `Administrator` (password auto-copied to clipboard) or custom user `df`.
+
+.EXAMPLE
+    .\scripts\manage-vm.ps1 modify -Name windows-dev-test-pc -NewUser df
+    .\scripts\manage-vm.ps1 add-user -Name windows-dev-test-pc -NewUser df -Password "MyStrongPassword!123"
+    .\scripts\manage-vm.ps1 modify -Name windows-dev-test-pc -NewName windows-dev-prod-pc
+    .\scripts\manage-vm.ps1 modify -Name windows-dev-test-pc -InstanceType t3.xlarge -VolumeSize 200
+    Modifies `windows-dev-test-pc` in-place: creates/updates OS user `df` via AWS SSM, renames the VM, or resizes compute/storage.
+
+.EXAMPLE
+    .\scripts\manage-vm.ps1 details -Name windows-dev-test-pc
+    .\scripts\manage-vm.ps1 screenshot -Name windows-dev-test-pc
+    Fetches full JSON metadata or captures and opens a live console screenshot of `windows-dev-test-pc`.
+
+.EXAMPLE
+    .\scripts\manage-vm.ps1 reset -Name windows-dev-test-pc
+    .\scripts\manage-vm.ps1 teardown -Name windows-dev-test-pc
+    Replaces the root volume with a clean factory AMI (`reset`) or permanently terminates and purges the VM (`teardown`).
+
+.NOTES
+    Prerequisites:
+      1. AWS CLI v2 installed and configured (`aws configure`).
+      2. Private RSA key file at `C:\opt\msys\home\df\.ssh\rsa-sweden-aws.pem` for Administrator password decryption.
+      3. IAM permissions for EC2 (`AmazonEC2FullAccess`) and SSM (`AmazonSSMFullAccess` for in-guest user management).
 #>
 
 [CmdletBinding()]
 param (
     [Parameter(Position = 0, Mandatory = $false)]
-    [ValidateSet("status", "start", "stop", "details", "connect", "list", "running", "reset", "screenshot", "create", "modify", "modify-vm", "add-user", "teardown", "purge", "destroy")]
+    [ValidateSet("status", "start", "stop", "details", "connect", "list", "running", "reset", "screenshot", "create", "modify", "modify-vm", "add-user", "teardown", "purge", "destroy", "help", "usage")]
     [string]$Action = "status",
 
     [Parameter(Mandatory = $false)]
-    [string]$InstanceId = "i-078f78f26356eb712",
+    [string]$InstanceId = "i-0135755d4c646aae6",
 
-    [Parameter(Mandatory = $false)]
+    [Parameter(Position = 1, Mandatory = $false)]
     [string]$Name,
 
     [Parameter(Mandatory = $false)]
@@ -79,11 +208,191 @@ param (
     [string]$Username = "Administrator",
 
     [Parameter(Mandatory = $false)]
-    [switch]$Force
+    [switch]$Force,
+
+    [Parameter(Mandatory = $false)]
+    [Alias("h", "?")]
+    [switch]$Help
 )
 
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 $keyPath = "C:\opt\msys\home\df\.ssh\rsa-sweden-aws.pem"
+
+function Show-VMHelp {
+    param([string]$ExampleName = "windows-dev-test-pc")
+
+    $exVm = if ([string]::IsNullOrWhiteSpace($ExampleName)) { "windows-dev-test-pc" } else { $ExampleName }
+
+    Write-Host ""
+    Write-Host "==========================================================================================" -ForegroundColor Cyan
+    Write-Host "  AWS EC2 WINDOWS VM MANAGEMENT CLI (manage-vm.ps1) - COMPLETE COMMAND REFERENCE" -ForegroundColor Cyan
+    Write-Host "==========================================================================================" -ForegroundColor Cyan
+    Write-Host "  All-in-one tool to provision, inspect, start, stop, connect (RDP), modify (users/size/tags)," -ForegroundColor White
+    Write-Host "  factory-reset, and tear down Windows Server 2025 / Windows 11 EC2 instances." -ForegroundColor White
+    Write-Host ""
+    Write-Host "SYNOPSIS / SYNTAX:" -ForegroundColor Yellow
+    Write-Host "  .\scripts\manage-vm.ps1 <Action> [-Name <VM_NAME>] [-InstanceId <ID>] [Options...]" -ForegroundColor Green
+    Write-Host "  .\scripts\manage-vm.ps1 help" -ForegroundColor Green
+    Write-Host "  Get-Help .\scripts\manage-vm.ps1 -Full" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "ACTIVE DEFAULTS:" -ForegroundColor Yellow
+    Write-Host "  Example VM Name   : $exVm" -ForegroundColor White
+    Write-Host "  Default InstanceId: $InstanceId" -ForegroundColor White
+    Write-Host "  Default Spec      : $InstanceType | ${VolumeSize} GB gp3 EBS | Key: $KeyName" -ForegroundColor White
+    Write-Host "  Network Defaults  : Subnet $SubnetId | SecurityGroup $SecurityGroupId" -ForegroundColor White
+    Write-Host "  Private Key (.pem): $keyPath" -ForegroundColor White
+    Write-Host ""
+
+    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+    Write-Host " 1. DISCOVERY, STATUS & DIAGNOSTICS" -ForegroundColor Cyan
+    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+
+    Write-Host "  help (aliases: usage, -Help, -h)" -ForegroundColor Green
+    Write-Host "    Display this rich command reference with '$exVm' examples and AWS CLI equivalents." -ForegroundColor Gray
+    Write-Host "    PS> .\scripts\manage-vm.ps1 help" -ForegroundColor White
+    Write-Host ""
+
+    Write-Host "  status (default action)" -ForegroundColor Green
+    Write-Host "    Show instance Name tag, Instance ID, power state, type, Public IP, and Public DNS." -ForegroundColor Gray
+    Write-Host "    PS> .\scripts\manage-vm.ps1 status -Name $exVm" -ForegroundColor White
+    Write-Host "    PS> .\scripts\manage-vm.ps1 status $exVm" -ForegroundColor White
+    Write-Host "    AWS> aws ec2 describe-instances --filters `"Name=tag:Name,Values=$exVm`" --output table" -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  list / running" -ForegroundColor Green
+    Write-Host "    List all EC2 instances in the region, or filter for currently running instances only." -ForegroundColor Gray
+    Write-Host "    PS> .\scripts\manage-vm.ps1 list" -ForegroundColor White
+    Write-Host "    PS> .\scripts\manage-vm.ps1 list -Running" -ForegroundColor White
+    Write-Host "    PS> .\scripts\manage-vm.ps1 running" -ForegroundColor White
+    Write-Host "    AWS> aws ec2 describe-instances --filters `"Name=instance-state-name,Values=running`" --output table" -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  details" -ForegroundColor Green
+    Write-Host "    Output the complete raw JSON metadata tracked by AWS EC2 (VPC, EBS, SG, ENI, tags)." -ForegroundColor Gray
+    Write-Host "    PS> .\scripts\manage-vm.ps1 details -Name $exVm" -ForegroundColor White
+    Write-Host "    AWS> aws ec2 describe-instances --instance-ids $InstanceId --output json" -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  screenshot" -ForegroundColor Green
+    Write-Host "    Capture a live JPG image of the Windows console screen, save to scripts\screenshot.jpg, and open it." -ForegroundColor Gray
+    Write-Host "    PS> .\scripts\manage-vm.ps1 screenshot -Name $exVm" -ForegroundColor White
+    Write-Host "    AWS> aws ec2 get-console-screenshot --instance-id $InstanceId --output json" -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+    Write-Host " 2. POWER LIFECYCLE & REMOTE DESKTOP (RDP)" -ForegroundColor Cyan
+    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+
+    Write-Host "  start" -ForegroundColor Green
+    Write-Host "    Start a stopped VM, wait until it enters 'running' state, and display its new Public IP/DNS." -ForegroundColor Gray
+    Write-Host "    PS> .\scripts\manage-vm.ps1 start -Name $exVm" -ForegroundColor White
+    Write-Host "    AWS> aws ec2 start-instances --instance-ids $InstanceId && aws ec2 wait instance-running --instance-ids $InstanceId" -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  stop  [Mandatory: -Name <VM_NAME>]" -ForegroundColor Green
+    Write-Host "    Gracefully stop a running VM and wait for 'stopped' state. Halts EC2 compute billing (`$0.00/hr)." -ForegroundColor Gray
+    Write-Host "    PS> .\scripts\manage-vm.ps1 stop -Name $exVm" -ForegroundColor White
+    Write-Host "    AWS> aws ec2 stop-instances --instance-ids $InstanceId && aws ec2 wait instance-stopped --instance-ids $InstanceId" -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  connect" -ForegroundColor Green
+    Write-Host "    Decrypt Administrator password via PEM key & copy to clipboard (or use custom -Username)," -ForegroundColor Gray
+    Write-Host "    refresh windows-dev-test-pc.rdp with current Public DNS, and launch Remote Desktop (mstsc.exe)." -ForegroundColor Gray
+    Write-Host "    PS> .\scripts\manage-vm.ps1 connect -Name $exVm" -ForegroundColor White
+    Write-Host "    PS> .\scripts\manage-vm.ps1 connect -Name $exVm -Username df" -ForegroundColor White
+    Write-Host "    AWS> aws ec2 get-password-data --instance-id $InstanceId --priv-launch-key `"$keyPath`"" -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+    Write-Host " 3. PROVISIONING & IN-PLACE MODIFICATION" -ForegroundColor Cyan
+    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+
+    Write-Host "  create  [Mandatory: -Name <VM_NAME>]" -ForegroundColor Green
+    Write-Host "    Launch a new Windows Server 2025 (Windows 11 Desktop) VM. Checks for duplicate Name tags," -ForegroundColor Gray
+    Write-Host "    queries AWS SSM for latest AMI, optionally provisions a local Admin/RDP user via User Data," -ForegroundColor Gray
+    Write-Host "    polls TCP port 3389 until RDP is ready, and updates default InstanceId & .rdp shortcut." -ForegroundColor Gray
+    Write-Host "    PS> .\scripts\manage-vm.ps1 create -Name $exVm" -ForegroundColor White
+    Write-Host "    PS> .\scripts\manage-vm.ps1 create -Name $exVm -NewUser df" -ForegroundColor White
+    Write-Host "    PS> .\scripts\manage-vm.ps1 create -Name $exVm -NewUser df -Password `"StrongPass!123`" -InstanceType t3.xlarge -VolumeSize 150 -Force" -ForegroundColor White
+    Write-Host "    AWS> aws ec2 run-instances --image-id <AmiId> --instance-type t3.large --key-name $KeyName --security-group-ids $SecurityGroupId --subnet-id $SubnetId --tag-specifications `"ResourceType=instance,Tags=[{Key=Name,Value=$exVm}]`"" -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  modify (aliases: modify-vm, add-user)" -ForegroundColor Green
+    Write-Host "    Modify an existing VM in-place (supports combining multiple flags in a single call):" -ForegroundColor Gray
+    Write-Host "      a) Create/update local Windows Admin & RDP user live via AWS SSM (-NewUser / -User, -Password)" -ForegroundColor Gray
+    Write-Host "      b) Rename the VM's Name tag (-NewName / -Rename)" -ForegroundColor Gray
+    Write-Host "      c) Change EC2 InstanceType (-InstanceType; VM must be stopped)" -ForegroundColor Gray
+    Write-Host "      d) Expand root gp3 EBS volume (-VolumeSize <GB>)" -ForegroundColor Gray
+    Write-Host "    PS> .\scripts\manage-vm.ps1 modify -Name $exVm -NewUser df" -ForegroundColor White
+    Write-Host "    PS> .\scripts\manage-vm.ps1 add-user -Name $exVm -NewUser df -Password `"StrongPass!123`" -Force" -ForegroundColor White
+    Write-Host "    PS> .\scripts\manage-vm.ps1 modify -Name $exVm -NewName ${exVm}-v2" -ForegroundColor White
+    Write-Host "    PS> .\scripts\manage-vm.ps1 modify -Name $exVm -InstanceType t3.xlarge -VolumeSize 200" -ForegroundColor White
+    Write-Host "    AWS> aws ssm send-command --instance-ids $InstanceId --document-name `"AWS-RunPowerShellScript`" ..." -ForegroundColor DarkGray
+    Write-Host "    AWS> aws ec2 create-tags --resources $InstanceId --tags `"Key=Name,Value=${exVm}-v2`"" -ForegroundColor DarkGray
+    Write-Host "    AWS> aws ec2 modify-instance-attribute --instance-id $InstanceId --instance-type `"Value=t3.xlarge`"" -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+    Write-Host " 4. FACTORY RESET & PERMANENT TEARDOWN" -ForegroundColor Cyan
+    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+
+    Write-Host "  reset" -ForegroundColor Green
+    Write-Host "    Cloud Factory Reset: replaces the root C: EBS volume with a fresh disk from the original AMI." -ForegroundColor Gray
+    Write-Host "    Wipes all installed apps, files, and custom OS users while preserving Instance ID and IP." -ForegroundColor Gray
+    Write-Host "    PS> .\scripts\manage-vm.ps1 reset -Name $exVm" -ForegroundColor White
+    Write-Host "    PS> .\scripts\manage-vm.ps1 reset -Name $exVm -Force" -ForegroundColor White
+    Write-Host "    AWS> aws ec2 create-replace-root-volume-task --instance-id $InstanceId --delete-replaced-root-volume" -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  teardown (aliases: purge, destroy)  [Mandatory: -Name <VM_NAME>]" -ForegroundColor Green
+    Write-Host "    Permanently terminate the EC2 instance and delete its attached root EBS storage volume." -ForegroundColor Gray
+    Write-Host "    Irreversible! All compute and disk storage billing drops to `$0.00." -ForegroundColor Gray
+    Write-Host "    PS> .\scripts\manage-vm.ps1 teardown -Name $exVm" -ForegroundColor White
+    Write-Host "    PS> .\scripts\manage-vm.ps1 purge -Name $exVm -Force" -ForegroundColor White
+    Write-Host "    AWS> aws ec2 terminate-instances --instance-ids $InstanceId && aws ec2 wait instance-terminated --instance-ids $InstanceId" -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+    Write-Host " 5. PARAMETERS & OPTIONS SUMMARY" -ForegroundColor Cyan
+    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+    Write-Host "  -Action <String>          : Command to run (default: status)" -ForegroundColor White
+    Write-Host "  -Name <String>            : Target VM Name tag (e.g. $exVm). Mandatory for create/stop/teardown" -ForegroundColor White
+    Write-Host "  -InstanceId <String>      : Target EC2 Instance ID (default: $InstanceId)" -ForegroundColor White
+    Write-Host "  -Running                  : Switch for 'list' to show only running instances" -ForegroundColor White
+    Write-Host "  -Username <String>        : RDP login user for 'connect' (default: Administrator)" -ForegroundColor White
+    Write-Host "  -NewUser <String>         : Alias: -User, -AddUser. Local Windows user to create/update" -ForegroundColor White
+    Write-Host "  -NewUserPassword <String> : Alias: -Password. Password for -NewUser (auto-generated if omitted with -Force)" -ForegroundColor White
+    Write-Host "  -NewName <String>         : Alias: -Rename. New Name tag for 'modify'" -ForegroundColor White
+    Write-Host "  -InstanceType <String>    : EC2 instance size for 'create' or 'modify' (default: $InstanceType)" -ForegroundColor White
+    Write-Host "  -VolumeSize <Int>         : Root gp3 disk size in GB for 'create' or 'modify' (default: $VolumeSize)" -ForegroundColor White
+    Write-Host "  -AmiId <String>           : Custom AMI ID for 'create' (default: latest Windows Server 2025 via SSM)" -ForegroundColor White
+    Write-Host "  -KeyName <String>         : EC2 Key Pair name (default: $KeyName)" -ForegroundColor White
+    Write-Host "  -SecurityGroupId <String> : Security Group ID (default: $SecurityGroupId)" -ForegroundColor White
+    Write-Host "  -SubnetId <String>        : VPC Subnet ID (default: $SubnetId)" -ForegroundColor White
+    Write-Host "  -UserDataPath <String>    : Path to custom bootstrap script for 'create'" -ForegroundColor White
+    Write-Host "  -Force                    : Skip interactive YES prompts and auto-generate missing passwords" -ForegroundColor White
+    Write-Host "  -Help (-h, -?)            : Show this help guide" -ForegroundColor White
+    Write-Host ""
+    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+    Write-Host " 6. END-TO-END WORKFLOW CHEATSHEET ($exVm)" -ForegroundColor Cyan
+    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+    Write-Host "  1. Create VM + User : .\scripts\manage-vm.ps1 create -Name $exVm -NewUser df" -ForegroundColor Yellow
+    Write-Host "  2. Check VM Status  : .\scripts\manage-vm.ps1 status -Name $exVm" -ForegroundColor Yellow
+    Write-Host "  3. Connect via RDP  : .\scripts\manage-vm.ps1 connect -Name $exVm -Username df" -ForegroundColor Yellow
+    Write-Host "  4. Add/Update User  : .\scripts\manage-vm.ps1 modify -Name $exVm -NewUser df" -ForegroundColor Yellow
+    Write-Host "  5. Take Screenshot  : .\scripts\manage-vm.ps1 screenshot -Name $exVm" -ForegroundColor Yellow
+    Write-Host "  6. Stop When Done   : .\scripts\manage-vm.ps1 stop -Name $exVm" -ForegroundColor Yellow
+    Write-Host "  7. Start Next Day   : .\scripts\manage-vm.ps1 start -Name $exVm" -ForegroundColor Yellow
+    Write-Host "  8. Factory Reset    : .\scripts\manage-vm.ps1 reset -Name $exVm" -ForegroundColor Yellow
+    Write-Host "  9. Purge Completely : .\scripts\manage-vm.ps1 teardown -Name $exVm" -ForegroundColor Yellow
+    Write-Host "==========================================================================================" -ForegroundColor Cyan
+    Write-Host ""
+}
+
+if ($Help -or $Action -in @("help", "usage")) {
+    Show-VMHelp -ExampleName $Name
+    return
+}
 
 function Get-VMData {
     param([string]$Id)
@@ -98,8 +407,19 @@ function Get-VMData {
     return $null
 }
 
+# Enforce mandatory VM Name for stop and teardown commands
+if (($Action -eq "stop" -or $Action -in @("teardown", "purge", "destroy")) -and [string]::IsNullOrWhiteSpace($Name)) {
+    if (-not $Force) {
+        $Name = Read-Host "Enter the mandatory VM name to $Action"
+    }
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        Write-Host "[-] The $Action command did not succeed because the VM name is mandatory. Please specify -Name <NAME>." -ForegroundColor Red
+        return
+    }
+}
+
 # If a Name was provided for actions other than create, resolve its active Instance ID
-if ($PSBoundParameters.ContainsKey('Name') -and $Action -ne "create") {
+if ((-not [string]::IsNullOrWhiteSpace($Name)) -and $Action -ne "create") {
     $matched = aws ec2 describe-instances --filters "Name=tag:Name,Values=$Name" "Name=instance-state-name,Values=pending,running,stopped,stopping" --output json 2>$null | ConvertFrom-Json
     if ($matched.Reservations -and $matched.Reservations.Count -gt 0 -and $matched.Reservations[0].Instances.Count -gt 0) {
         $InstanceId = $matched.Reservations[0].Instances[0].InstanceId
@@ -238,11 +558,32 @@ switch ($Action) {
     }
 
     "stop" {
-        Write-Host "Stopping instance $InstanceId..." -ForegroundColor Yellow
+        $vm = Get-VMData -Id $InstanceId
+        if (-not $vm) {
+            Write-Host "[-] Instance $InstanceId not found." -ForegroundColor Red
+            return
+        }
+
+        $vmName = if ($Name) { $Name } else { ($vm.Tags | Where-Object { $_.Key -eq 'Name' } | Select-Object -ExpandProperty Value) }
+        if (-not $vmName) { $vmName = $InstanceId }
+
+        if ($vm.State.Name -eq "stopped") {
+            Write-Host "[-] Instance '$vmName' ($InstanceId) is already stopped." -ForegroundColor Yellow
+            return
+        }
+
+        if ($vm.State.Name -eq "stopping") {
+            Write-Host "[*] Instance '$vmName' ($InstanceId) is currently stopping. Waiting for 'stopped' state..." -ForegroundColor Yellow
+            aws ec2 wait instance-stopped --instance-ids $InstanceId
+            Write-Host "[+] Instance '$vmName' ($InstanceId) is now STOPPED. Compute billing has ceased." -ForegroundColor Green
+            return
+        }
+
+        Write-Host "Stopping instance '$vmName' ($InstanceId)..." -ForegroundColor Yellow
         aws ec2 stop-instances --instance-ids $InstanceId --output table
         Write-Host "Waiting for instance to enter 'stopped' state..." -ForegroundColor Yellow
         aws ec2 wait instance-stopped --instance-ids $InstanceId
-        Write-Host "[+] Instance is now STOPPED. Compute billing has ceased." -ForegroundColor Green
+        Write-Host "[+] Instance '$vmName' ($InstanceId) is now STOPPED. Compute billing has ceased." -ForegroundColor Green
     }
 
     "details" {
@@ -540,27 +881,41 @@ enablecredsspsupport:i:1
     }
 
     { $_ -in @("teardown", "purge", "destroy") } {
+        $vm = Get-VMData -Id $InstanceId
+        if (-not $vm) {
+            Write-Host "[-] Instance $InstanceId not found." -ForegroundColor Red
+            return
+        }
+
+        $vmName = if ($Name) { $Name } else { ($vm.Tags | Where-Object { $_.Key -eq 'Name' } | Select-Object -ExpandProperty Value) }
+        if (-not $vmName) { $vmName = $InstanceId }
+
+        if ($vm.State.Name -eq "terminated") {
+            Write-Host "[-] Instance '$vmName' ($InstanceId) is already terminated." -ForegroundColor Yellow
+            return
+        }
+
         Write-Host "==========================================================" -ForegroundColor Red
         Write-Host " WARNING: PERMANENT INSTANCE TEARDOWN (TERMINATION)" -ForegroundColor Red
         Write-Host "==========================================================" -ForegroundColor Red
-        Write-Host "This will PERMANENTLY TERMINATE and PURGE the instance: $InstanceId" -ForegroundColor Yellow
+        Write-Host "This will PERMANENTLY TERMINATE and PURGE instance '$vmName' ($InstanceId)" -ForegroundColor Yellow
         Write-Host "ALL data on the root volume and attached EBS storage will be permanently deleted." -ForegroundColor Yellow
         Write-Host "Compute and storage billing for this instance will cease completely." -ForegroundColor Green
 
         if (-not $Force) {
-            $confirm = Read-Host "`nType 'YES' to permanently purge and delete this instance"
+            $confirm = Read-Host "`nType 'YES' to permanently purge and delete instance '$vmName'"
             if ($confirm -ne "YES") {
                 Write-Host "[-] Teardown aborted by user." -ForegroundColor Gray
                 return
             }
         }
 
-        Write-Host "`n[*] Terminating instance $InstanceId via AWS CLI..." -ForegroundColor Cyan
+        Write-Host "`n[*] Terminating instance '$vmName' ($InstanceId) via AWS CLI..." -ForegroundColor Cyan
         aws ec2 terminate-instances --instance-ids $InstanceId --output table
 
         Write-Host "Waiting for instance to enter 'terminated' state..." -ForegroundColor Yellow
         aws ec2 wait instance-terminated --instance-ids $InstanceId
-        Write-Host "`n[+] Instance $InstanceId has been PERMANENTLY TERMINATED and PURGED." -ForegroundColor Green
+        Write-Host "`n[+] Instance '$vmName' ($InstanceId) has been PERMANENTLY TERMINATED and PURGED." -ForegroundColor Green
         Write-Host "    All attached root storage has been deleted. Ongoing costs are now `$0.00." -ForegroundColor Cyan
     }
 
@@ -760,4 +1115,5 @@ enablecredsspsupport:i:1
         }
     }
 }
+
 
